@@ -99,6 +99,10 @@ func (c Client) Evaluate(ctx context.Context, request Request) (Response, error)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		detail := apiErrorDetail(resp.Body, c.APIKey, request.State, data)
+		if detail != "" {
+			return Response{}, fmt.Errorf("TypeSafe API returned HTTP %d: %s", resp.StatusCode, detail)
+		}
 		return Response{}, fmt.Errorf("TypeSafe API returned HTTP %d", resp.StatusCode)
 	}
 	var result Response
@@ -129,6 +133,44 @@ func (c Client) Evaluate(ctx context.Context, request Request) (Response, error)
 		}
 	}
 	return result, nil
+}
+
+// apiErrorDetail surfaces a short server reason without echoing credentials or
+// request state if an upstream error happens to include either one.
+func apiErrorDetail(body io.Reader, key string, state json.RawMessage, request []byte) string {
+	data, _ := io.ReadAll(io.LimitReader(body, 4096))
+	var envelope struct {
+		Error   json.RawMessage `json:"error"`
+		Message string          `json:"message"`
+	}
+	detail := strings.TrimSpace(string(data))
+	if json.Unmarshal(data, &envelope) == nil {
+		var nested struct {
+			Message string `json:"message"`
+		}
+		var plain string
+		switch {
+		case json.Unmarshal(envelope.Error, &nested) == nil && nested.Message != "":
+			detail = nested.Message
+		case json.Unmarshal(envelope.Error, &plain) == nil && plain != "":
+			detail = plain
+		case envelope.Message != "":
+			detail = envelope.Message
+		}
+	}
+	var stateString string
+	_ = json.Unmarshal(state, &stateString)
+	for _, private := range []string{key, string(state), stateString, string(request)} {
+		if private != "" && strings.Contains(detail, private) {
+			return ""
+		}
+	}
+	detail = strings.Join(strings.Fields(detail), " ")
+	runes := []rune(detail)
+	if len(runes) > 300 {
+		detail = string(runes[:300]) + "…"
+	}
+	return detail
 }
 
 func validateRequest(request Request) error {

@@ -69,3 +69,27 @@ func TestEvaluateErrorsNeverExposeKeyOrBody(t *testing.T) {
 		t.Fatalf("unsafe timeout error: %v", err)
 	}
 }
+
+func TestEvaluateShowsBoundedAPIErrorReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"nested message", `{"error":{"message":"invalid criteria"}}`, "invalid criteria"},
+		{"plain body", "rate limit reached", "rate limit reached"},
+		{"long body", strings.Repeat("x", 400), strings.Repeat("x", 300) + "…"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			client := Client{Endpoint: server.URL, APIKey: "test-secret"}
+			_, err := client.Evaluate(context.Background(), Request{State: json.RawMessage(`"private state"`), Model: "jev-latest",
+				Questions: map[string]Question{"decision": {Type: "noul", Instructions: "Yes?"}}})
+			if err == nil || err.Error() != "TypeSafe API returned HTTP 400: "+tc.want {
+				t.Fatalf("unexpected API error: %v", err)
+			}
+		})
+	}
+}

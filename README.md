@@ -88,8 +88,10 @@ Single-question output contains `answer`; batch output contains `answers`.
 Both include `model`, `usage`, measured `latency_ms`, and a
 client-generated `request_id` with `request_id_source:"local"`. The API
 reference does not document a server request ID or server latency field, so
-these values describe this CLI invocation. API error bodies are not printed,
-and the key is not written to JSONL logs. The API reference documents input
+these values describe this CLI invocation. HTTP errors include up to 300
+characters of the API's error message or response body; credentials and
+request state are suppressed if echoed by the server. The key is not written
+to JSONL logs. The API reference documents input
 and output token usage but no cost field. If a response includes a `cost`
 field, this CLI passes it through without calculating or interpreting it.
 

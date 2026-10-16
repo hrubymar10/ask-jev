@@ -68,12 +68,15 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return errors.New("usage: ask-jev <choice|noul|score|batch|outcome|version> [flags]")
+		return errors.New("usage: ask-jev <choice|noul|score|batch|outcome|mcp|version> [flags]")
 	}
 	command := args[0]
 	if command == "version" {
 		_, err := fmt.Fprintln(stdout, version)
 		return err
+	}
+	if command == "mcp" {
+		return runMCP(args[1:], os.Stdin, stdout)
 	}
 	if command != "choice" && command != "noul" && command != "score" && command != "batch" && command != "outcome" {
 		return fmt.Errorf("unknown command %q", command)
@@ -228,7 +231,7 @@ func run(args []string, stdout io.Writer) error {
 	return json.NewEncoder(stdout).Encode(result)
 }
 
-const usage = "usage: ask-jev <choice|noul|score|batch|outcome|version> [flags]\n" +
+const usage = "usage: ask-jev <choice|noul|score|batch|outcome|mcp|version> [flags]\n" +
 	"Use -H or --human for readable evaluation output; use -h or --help for this help."
 
 func printHuman(dst io.Writer, batch bool, request jev.Request, response jev.Response) error {

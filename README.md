@@ -3,9 +3,8 @@
 `ask-jev` is a small Go CLI for TypeSafe's System One decision API. It sends
 one `choice`, `noul`, or `score` question per invocation, or several through
 `batch`, and prints JSON. The API client and types live in `internal/jev`;
-`cmd/ask-jev` handles the CLI,
-JSONC config, and local outcome log. An MCP transport can use the same client
-later. The project uses only the Go standard library.
+`cmd/ask-jev` handles the CLI, MCP stdio server, JSONC config, and local
+outcome log. The project uses only the Go standard library.
 
 ## Setup
 
@@ -131,6 +130,42 @@ bin/ask-jev outcome <request_id> true --log decisions.jsonl
 
 This JSONL log is a local record for later comparison; `outcome` does not
 send anything to TypeSafe.
+
+## MCP server
+
+`ask-jev mcp` exposes `choice`, `noul`, `score`, `batch`, and `outcome`
+as MCP tools over stdio. It reads the same JSONC config as the CLI; pass
+`--config` when the client starts it outside the repository. Pass `--log`
+or set `log_path` in config to enable local evaluation and outcome records.
+The server writes only JSON-RPC messages to stdout. Tool results contain
+the same JSON as the CLI inside a text content block. Tool errors return
+`isError: true` and suppress an API error detail that echoes the API key
+or state.
+
+For Claude Code, register the wrapper as a local stdio server:
+
+```sh
+claude mcp add ask-jev -- /path/to/ask-jev mcp
+```
+
+Point `/path/to/ask-jev` at the built binary or wrapper. A generic MCP
+client can use:
+
+```json
+{
+  "mcpServers": {
+    "ask-jev": {
+      "command": "/path/to/ask-jev",
+      "args": ["mcp", "--config", "/path/to/config.jsonc"]
+    }
+  }
+}
+```
+
+The server supports the initialize handshake used by MCP protocol versions
+`2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`. It echoes
+a supported client version and otherwise offers `2025-11-25`. The
+`2026-07-28` discovery flow is not implemented.
 
 ## License
 

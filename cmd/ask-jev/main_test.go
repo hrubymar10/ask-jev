@@ -140,3 +140,59 @@ func TestBatchQuestionsAndExplicitStateLogging(t *testing.T) {
 		t.Fatalf("explicit state log mismatch: %v", err)
 	}
 }
+
+func TestHumanOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer, want string
+		args               []string
+	}{
+		{"choice", `{"type":"choice","choice":"billing","probabilities":{"billing":0.67,"technical":0.33},"confidence":0.4}`, "billing - Payments - 67% confidence\n", []string{"choice", "-h", "--option", "billing=Payments", "--option", "technical"}},
+		{"noul yes", `{"type":"noul","noul":0.67}`, "YES - Human review - 67% confidence\n", []string{"noul", "--human", "--true", "Human review", "--false", "No review"}},
+		{"noul no", `{"type":"noul","noul":0.36}`, "NO - No review - 64% confidence\n", []string{"noul", "-h", "--true", "Human review", "--false", "No review"}},
+		{"noul no description", `{"type":"noul","noul":0.67}`, "YES - 67% confidence\n", []string{"noul", "-h"}},
+		{"score", `{"type":"score","score":1.2,"legend":{"0":"low","1":"medium","2":"high"},"probabilities":{"0":0.1,"1":0.6,"2":0.3},"confidence":0.72}`, "1.2 - medium - 72% confidence\n", []string{"score", "-h", "--level", "low", "--level", "medium", "--level", "high"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"model":"jev-test","answers":{"decision":` + tc.answer + `},"usage":{"input_tokens":1,"output_tokens":1}}`))
+			}))
+			defer server.Close()
+			args := append(append([]string{}, tc.args...), "--config", testConfig(t, server.URL), "--state", `"ticket"`, "--question", "Decide")
+			var stdout bytes.Buffer
+			if err := run(args, &stdout); err != nil || stdout.String() != tc.want {
+				t.Fatalf("human output=%q, error=%v", stdout.String(), err)
+			}
+		})
+	}
+}
+
+func TestHumanBatchStillLogsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"model":"jev-test","answers":{"route":{"type":"choice","choice":"a","probabilities":{"a":0.7,"b":0.3},"confidence":0.2},"urgent":{"type":"noul","noul":0.4}},"usage":{"input_tokens":3,"output_tokens":2}}`))
+	}))
+	defer server.Close()
+	root := t.TempDir()
+	batch := filepath.Join(root, "batch.json")
+	if err := os.WriteFile(batch, []byte(`{"state":"ticket","questions":{"urgent":{"type":"noul","instructions":"Urgent?","criteria":{"false":"Can wait"}},"route":{"type":"choice","instructions":"Route?","criteria":{"a":"Billing","b":"Tech"}}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(root, "decisions.jsonl")
+	var stdout bytes.Buffer
+	if err := run([]string{"batch", "-h", "--config", testConfig(t, server.URL), "--file", batch, "--log", log}, &stdout); err != nil {
+		t.Fatal(err)
+	}
+	if want := "route: a - Billing - 70% confidence\nurgent: NO - Can wait - 60% confidence\n"; stdout.String() != want {
+		t.Fatalf("human batch output=%q, want=%q", stdout.String(), want)
+	}
+	logged, err := os.ReadFile(log)
+	if err != nil || !bytes.Contains(logged, []byte(`"request_id"`)) || !bytes.Contains(logged, []byte(`"answers"`)) || bytes.Contains(logged, []byte(`"state":"ticket"`)) {
+		t.Fatalf("JSONL evaluation missing or leaked state: %v", err)
+	}
+}
+
+func TestHelpDoesNotLoadConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	if err := run([]string{"choice", "--help"}, &stdout); err != nil || !strings.Contains(stdout.String(), "-h or --human") {
+		t.Fatalf("help output=%q, error=%v", stdout.String(), err)
+	}
+}

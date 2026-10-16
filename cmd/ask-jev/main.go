@@ -10,9 +10,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +63,10 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
+	if len(args) == 1 && args[0] == "--help" {
+		_, err := fmt.Fprintln(stdout, usage)
+		return err
+	}
 	if len(args) == 0 {
 		return errors.New("usage: ask-jev <choice|noul|score|batch|outcome|version> [flags]")
 	}
@@ -77,6 +84,9 @@ func run(args []string, stdout io.Writer) error {
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	help := flags.Bool("help", false, "show usage")
+	human := flags.Bool("human", false, "print a readable answer")
+	shortHuman := flags.Bool("h", false, "print a readable answer")
 	defaultConfig := os.Getenv("ASK_JEV_CONFIG")
 	if defaultConfig == "" {
 		defaultConfig = "config.jsonc"
@@ -96,6 +106,13 @@ func run(args []string, stdout io.Writer) error {
 	flags.Var(&levels, "level", "score level description; repeat")
 	if err := flags.Parse(ordered); err != nil {
 		return errors.New("invalid flags; see README for command syntax")
+	}
+	if *help {
+		_, err := fmt.Fprintln(stdout, usage)
+		return err
+	}
+	if command == "outcome" && (*human || *shortHuman) {
+		return errors.New("--human applies only to evaluations")
 	}
 	config, err := jev.LoadConfig(*configPath)
 	if err != nil {
@@ -204,8 +221,102 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 	}
+	if *human || *shortHuman {
+		return printHuman(stdout, command == "batch", request, response)
+	}
 	return json.NewEncoder(stdout).Encode(result)
 }
+
+const usage = "usage: ask-jev <choice|noul|score|batch|outcome|version> [flags]\n" +
+	"Use -h or --human for readable evaluation output; use --help for this help."
+
+func printHuman(dst io.Writer, batch bool, request jev.Request, response jev.Response) error {
+	ids := make([]string, 0, len(request.Questions))
+	for id := range request.Questions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		line := humanAnswer(request.Questions[id], response.Answers[id])
+		if batch {
+			line = oneLine(id) + ": " + line
+		}
+		if _, err := fmt.Fprintln(dst, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func humanAnswer(question jev.Question, answer jev.Answer) string {
+	var label, description string
+	var confidence float64
+	switch answer.Type {
+	case "choice":
+		label = *answer.Choice
+		description = criterionDescription(question.Criteria, label)
+		confidence = answer.Probabilities[label]
+	case "noul":
+		probability := *answer.Noul
+		label = "NO"
+		criterion := "false"
+		confidence = 1 - probability
+		if probability >= 0.5 {
+			label, criterion, confidence = "YES", "true", probability
+		}
+		description = criterionDescription(question.Criteria, criterion)
+	case "score":
+		value := *answer.Score
+		label = strconv.FormatFloat(value, 'f', -1, 64)
+		index := int(math.Round(value))
+		if index >= 0 {
+			description = answer.Legend[strconv.Itoa(index)]
+			if description == "" {
+				description = scoreLevel(question.Criteria, index)
+			}
+		}
+		confidence = *answer.Confidence
+	}
+	line := oneLine(label)
+	if description != "" {
+		line += " - " + oneLine(description)
+	}
+	return fmt.Sprintf("%s - %.0f%% confidence", line, confidence*100)
+}
+
+func criterionDescription(criteria any, key string) string {
+	switch values := criteria.(type) {
+	case map[string]*string:
+		if value := values[key]; value != nil {
+			return *value
+		}
+	case map[string]string:
+		return values[key]
+	case map[string]any:
+		if value, ok := values[key].(string); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func scoreLevel(criteria any, index int) string {
+	switch values := criteria.(type) {
+	case []string:
+		if index < len(values) {
+			return values[index]
+		}
+	case []any:
+		if index < len(values) {
+			if value, ok := values[index].(string); ok {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func oneLine(value string) string { return strings.Join(strings.Fields(value), " ") }
 
 // The standard flag parser stops at the first positional argument. Move
 // known value flags ahead of positionals so outcome accepts --log afterward.
@@ -213,12 +324,12 @@ func flagsFirst(args []string) ([]string, error) {
 	var values, positionals []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if !strings.HasPrefix(arg, "--") {
+		if !strings.HasPrefix(arg, "--") && arg != "-h" {
 			positionals = append(positionals, arg)
 			continue
 		}
 		name, _, hasValue := strings.Cut(arg, "=")
-		if name == "--log-state" {
+		if name == "--log-state" || name == "--human" || name == "-h" || name == "--help" {
 			values = append(values, arg)
 			continue
 		}

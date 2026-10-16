@@ -95,6 +95,22 @@ to JSONL logs. The API reference documents input
 and output token usage but no cost field. If a response includes a `cost`
 field, this CLI passes it through without calculating or interpreting it.
 
+Add `-h` or `--human` to an evaluation for a single readable line instead
+of JSON on stdout. `--help` prints command help; `-h` means human output.
+For `noul`, the line says YES when its probability is at least 0.5 and NO
+otherwise, with confidence shown as the probability of that result. Choice
+uses the selected option's probability. Score shows the API's numeric
+expected value, the label of its nearest level, and the API confidence.
+Descriptions are omitted when none were supplied. Batch prints one line per
+question, prefixed with its ID, in ID order. If `--log` is set, the JSONL
+entry still contains the full structured result.
+
+```sh
+bin/ask-jev choice -h --state @state.json --question 'Route?' \
+  --option billing='Payments' --option technical='Bugs'
+# billing - Payments - 67% confidence
+```
+
 ## Record an outcome
 
 `--log` appends a private JSONL evaluation entry, with the answer, local

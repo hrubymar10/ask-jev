@@ -77,6 +77,8 @@ func TestEvaluateShowsBoundedAPIErrorReason(t *testing.T) {
 		{"nested message", `{"error":{"message":"invalid criteria"}}`, "invalid criteria"},
 		{"plain body", "rate limit reached", "rate limit reached"},
 		{"long body", strings.Repeat("x", 400), strings.Repeat("x", 300) + "…"},
+		{"JSON without error envelope", `{"debug":"private details"}`, ""},
+		{"terminal controls", `{"error":{"message":"invalid\u001b[31m\u202e criteria"}}`, "invalid [31m criteria"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +89,11 @@ func TestEvaluateShowsBoundedAPIErrorReason(t *testing.T) {
 			client := Client{Endpoint: server.URL, APIKey: "test-secret"}
 			_, err := client.Evaluate(context.Background(), Request{State: json.RawMessage(`"private state"`), Model: "jev-latest",
 				Questions: map[string]Question{"decision": {Type: "noul", Instructions: "Yes?"}}})
-			if err == nil || err.Error() != "TypeSafe API returned HTTP 400: "+tc.want {
+			want := "TypeSafe API returned HTTP 400"
+			if tc.want != "" {
+				want += ": " + tc.want
+			}
+			if err == nil || err.Error() != want {
 				t.Fatalf("unexpected API error: %v", err)
 			}
 		})

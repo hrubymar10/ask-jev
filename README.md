@@ -90,13 +90,14 @@ client-generated `request_id` with `request_id_source:"local"`. The API
 reference does not document a server request ID or server latency field, so
 these values describe this CLI invocation. HTTP errors include up to 300
 characters of the API's error message or response body; credentials and
-request state are suppressed if echoed by the server. The key is not written
-to JSONL logs. The API reference documents input
+request state are suppressed if echoed verbatim by the server. JSON error
+responses without an `error` or `message` envelope show only the HTTP status.
+The key is not written to JSONL logs. The API reference documents input
 and output token usage but no cost field. If a response includes a `cost`
 field, this CLI passes it through without calculating or interpreting it.
 
-Add `-h` or `--human` to an evaluation for a single readable line instead
-of JSON on stdout. `--help` prints command help; `-h` means human output.
+Add `-H` or `--human` to an evaluation for a single readable line instead
+of JSON on stdout. `-h` or `--help` prints command help.
 For `noul`, the line says YES when its probability is at least 0.5 and NO
 otherwise, with confidence shown as the probability of that result. Choice
 uses the selected option's probability. Score shows the API's numeric
@@ -106,7 +107,7 @@ question, prefixed with its ID, in ID order. If `--log` is set, the JSONL
 entry still contains the full structured result.
 
 ```sh
-bin/ask-jev choice -h --state @state.json --question 'Route?' \
+bin/ask-jev choice -H --state @state.json --question 'Route?' \
   --option billing='Payments' --option technical='Bugs'
 # billing - Payments - 67% confidence
 ```
@@ -130,3 +131,7 @@ bin/ask-jev outcome <request_id> true --log decisions.jsonl
 
 This JSONL log is a local record for later comparison; `outcome` does not
 send anything to TypeSafe.
+
+## License
+
+MIT

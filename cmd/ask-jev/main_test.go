@@ -146,11 +146,11 @@ func TestHumanOutput(t *testing.T) {
 		name, answer, want string
 		args               []string
 	}{
-		{"choice", `{"type":"choice","choice":"billing","probabilities":{"billing":0.67,"technical":0.33},"confidence":0.4}`, "billing - Payments - 67% confidence\n", []string{"choice", "-h", "--option", "billing=Payments", "--option", "technical"}},
+		{"choice", `{"type":"choice","choice":"billing","probabilities":{"billing":0.67,"technical":0.33},"confidence":0.4}`, "billing - Payments - 67% confidence\n", []string{"choice", "-H", "--option", "billing=Payments", "--option", "technical"}},
 		{"noul yes", `{"type":"noul","noul":0.67}`, "YES - Human review - 67% confidence\n", []string{"noul", "--human", "--true", "Human review", "--false", "No review"}},
-		{"noul no", `{"type":"noul","noul":0.36}`, "NO - No review - 64% confidence\n", []string{"noul", "-h", "--true", "Human review", "--false", "No review"}},
-		{"noul no description", `{"type":"noul","noul":0.67}`, "YES - 67% confidence\n", []string{"noul", "-h"}},
-		{"score", `{"type":"score","score":1.2,"legend":{"0":"low","1":"medium","2":"high"},"probabilities":{"0":0.1,"1":0.6,"2":0.3},"confidence":0.72}`, "1.2 - medium - 72% confidence\n", []string{"score", "-h", "--level", "low", "--level", "medium", "--level", "high"}},
+		{"noul no", `{"type":"noul","noul":0.36}`, "NO - No review - 64% confidence\n", []string{"noul", "-H", "--true", "Human review", "--false", "No review"}},
+		{"noul no description", `{"type":"noul","noul":0.67}`, "YES - 67% confidence\n", []string{"noul", "-H"}},
+		{"score", `{"type":"score","score":1.2,"legend":{"0":"low","1":"medium","2":"high"},"probabilities":{"0":0.1,"1":0.6,"2":0.3},"confidence":0.72}`, "1.2 - medium - 72% confidence\n", []string{"score", "-H", "--level", "low", "--level", "medium", "--level", "high"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +178,7 @@ func TestHumanBatchStillLogsJSON(t *testing.T) {
 	}
 	log := filepath.Join(root, "decisions.jsonl")
 	var stdout bytes.Buffer
-	if err := run([]string{"batch", "-h", "--config", testConfig(t, server.URL), "--file", batch, "--log", log}, &stdout); err != nil {
+	if err := run([]string{"batch", "-H", "--config", testConfig(t, server.URL), "--file", batch, "--log", log}, &stdout); err != nil {
 		t.Fatal(err)
 	}
 	if want := "route: a - Billing - 70% confidence\nurgent: NO - Can wait - 60% confidence\n"; stdout.String() != want {
@@ -192,7 +192,7 @@ func TestHumanBatchStillLogsJSON(t *testing.T) {
 
 func TestHelpDoesNotLoadConfig(t *testing.T) {
 	var stdout bytes.Buffer
-	if err := run([]string{"choice", "--help"}, &stdout); err != nil || !strings.Contains(stdout.String(), "-h or --human") {
+	if err := run([]string{"choice", "-h"}, &stdout); err != nil || !strings.Contains(stdout.String(), "-H or --human") {
 		t.Fatalf("help output=%q, error=%v", stdout.String(), err)
 	}
 }

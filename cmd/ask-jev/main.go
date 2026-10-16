@@ -63,7 +63,7 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
-	if len(args) == 1 && args[0] == "--help" {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		_, err := fmt.Fprintln(stdout, usage)
 		return err
 	}
@@ -85,8 +85,9 @@ func run(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	help := flags.Bool("help", false, "show usage")
+	shortHelp := flags.Bool("h", false, "show usage")
 	human := flags.Bool("human", false, "print a readable answer")
-	shortHuman := flags.Bool("h", false, "print a readable answer")
+	shortHuman := flags.Bool("H", false, "print a readable answer")
 	defaultConfig := os.Getenv("ASK_JEV_CONFIG")
 	if defaultConfig == "" {
 		defaultConfig = "config.jsonc"
@@ -107,7 +108,7 @@ func run(args []string, stdout io.Writer) error {
 	if err := flags.Parse(ordered); err != nil {
 		return errors.New("invalid flags; see README for command syntax")
 	}
-	if *help {
+	if *help || *shortHelp {
 		_, err := fmt.Fprintln(stdout, usage)
 		return err
 	}
@@ -228,7 +229,7 @@ func run(args []string, stdout io.Writer) error {
 }
 
 const usage = "usage: ask-jev <choice|noul|score|batch|outcome|version> [flags]\n" +
-	"Use -h or --human for readable evaluation output; use --help for this help."
+	"Use -H or --human for readable evaluation output; use -h or --help for this help."
 
 func printHuman(dst io.Writer, batch bool, request jev.Request, response jev.Response) error {
 	ids := make([]string, 0, len(request.Questions))
@@ -324,12 +325,12 @@ func flagsFirst(args []string) ([]string, error) {
 	var values, positionals []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if !strings.HasPrefix(arg, "--") && arg != "-h" {
+		if !strings.HasPrefix(arg, "--") && arg != "-h" && arg != "-H" {
 			positionals = append(positionals, arg)
 			continue
 		}
 		name, _, hasValue := strings.Cut(arg, "=")
-		if name == "--log-state" || name == "--human" || name == "-h" || name == "--help" {
+		if name == "--log-state" || name == "--human" || name == "-H" || name == "-h" || name == "--help" {
 			values = append(values, arg)
 			continue
 		}

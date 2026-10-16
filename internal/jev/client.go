@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const DefaultEndpoint = "https://api.typesafe.ai/v1/systemone"
@@ -144,11 +145,15 @@ func apiErrorDetail(body io.Reader, key string, state json.RawMessage, request [
 		Message string          `json:"message"`
 	}
 	detail := strings.TrimSpace(string(data))
-	if json.Unmarshal(data, &envelope) == nil {
+	if json.Valid(data) {
+		if json.Unmarshal(data, &envelope) != nil {
+			return ""
+		}
 		var nested struct {
 			Message string `json:"message"`
 		}
 		var plain string
+		detail = ""
 		switch {
 		case json.Unmarshal(envelope.Error, &nested) == nil && nested.Message != "":
 			detail = nested.Message
@@ -165,6 +170,12 @@ func apiErrorDetail(body io.Reader, key string, state json.RawMessage, request [
 			return ""
 		}
 	}
+	detail = strings.Map(func(r rune) rune {
+		if unicode.IsPrint(r) {
+			return r
+		}
+		return ' '
+	}, detail)
 	detail = strings.Join(strings.Fields(detail), " ")
 	runes := []rune(detail)
 	if len(runes) > 300 {

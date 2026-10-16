@@ -1,0 +1,9 @@
+{
+  // Copy to config.jsonc and fill in your TypeSafe settings.
+  "endpoint": "https://api.typesafe.ai/v1/systemone",
+  "api_key": "", // Or leave empty and use api_key_path.
+  "api_key_path": "",
+  "model": "jev-latest",
+  "timeout_seconds": 30,
+  "log_path": ""
+}

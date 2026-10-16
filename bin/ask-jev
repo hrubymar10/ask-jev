@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Build once and reuse the cached binary. ASK_JEV_FORCE_BUILD=1 builds a
+# temporary binary for this invocation, leaving the cached binary untouched.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+BINARY="$REPO_DIR/ask-jev-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+FORCE_BUILD="${ASK_JEV_FORCE_BUILD:-}"
+TEMP_BINARY=""
+pid=""
+
+cleanup() {
+    if [ -n "$TEMP_BINARY" ]; then
+        rm -f "$TEMP_BINARY"
+    fi
+}
+
+forward_signal() {
+    if [ -n "$pid" ]; then
+        kill "-$1" "$pid" 2>/dev/null || true
+    fi
+}
+
+if [ "$FORCE_BUILD" = "1" ]; then
+    BINARY="$(mktemp "${TMPDIR:-/tmp}/ask-jev-XXXXXX")"
+    TEMP_BINARY="$BINARY"
+    trap cleanup EXIT
+    trap 'forward_signal INT' INT
+    trap 'forward_signal TERM' TERM
+fi
+
+if [ ! -f "$BINARY" ] || [ "$FORCE_BUILD" = "1" ]; then
+    echo "Building ask-jev..." >&2
+    VERSION="$(cd "$REPO_DIR" && git describe --tags --always --dirty 2>/dev/null || echo v0.0.0-dev)"
+    (cd "$REPO_DIR" && go build -ldflags "-s -w -X main.version=$VERSION" -o "$BINARY" ./cmd/ask-jev) || {
+        echo "Build failed" >&2
+        exit 1
+    }
+fi
+
+if [ -z "${ASK_JEV_CONFIG:-}" ]; then
+    export ASK_JEV_CONFIG="$REPO_DIR/config.jsonc"
+fi
+
+if [ "$FORCE_BUILD" = "1" ]; then
+    "$BINARY" "$@" <&0 &
+    pid=$!
+    status=0
+    while true; do
+        if wait "$pid"; then
+            status=0
+            break
+        fi
+        status=$?
+        if ! kill -0 "$pid" 2>/dev/null; then
+            break
+        fi
+    done
+    trap - INT TERM
+    exit "$status"
+fi
+
+exec "$BINARY" "$@"

@@ -69,6 +69,40 @@ func TestEvaluateErrorsNeverExposeKeyOrBody(t *testing.T) {
 		t.Fatalf("unsafe timeout error: %v", err)
 	}
 }
+func TestEvaluateRedirectDoesNotExposeCredentials(t *testing.T) {
+	request := Request{State: json.RawMessage(`"private state"`), Model: "jev-latest",
+		Questions: map[string]Question{"decision": {Type: "noul", Instructions: "Yes?"}}}
+	forwarded := false
+	plaintext := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = true
+	}))
+	defer plaintext.Close()
+	downgrade := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plaintext.URL, http.StatusTemporaryRedirect)
+	}))
+	defer downgrade.Close()
+	client := Client{Endpoint: downgrade.URL, APIKey: "secret", HTTP: downgrade.Client()}
+	_, err := client.Evaluate(context.Background(), request)
+	if err == nil || forwarded || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "private state") {
+		t.Fatalf("unsafe downgrade redirect: %v, forwarded=%v", err, forwarded)
+	}
+
+	var destinationAuth string
+	destination := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		destinationAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"model":"jev-test","answers":{"decision":{"type":"noul","noul":0.8}},"usage":{}}`))
+	}))
+	defer destination.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+	client = Client{Endpoint: source.URL, APIKey: "secret", HTTP: destination.Client()}
+	_, err = client.Evaluate(context.Background(), request)
+	if err != nil || destinationAuth != "" {
+		t.Fatalf("cross-host redirect auth=%q, error=%v", destinationAuth, err)
+	}
+}
 
 func TestEvaluateShowsBoundedAPIErrorReason(t *testing.T) {
 	for _, tc := range []struct {

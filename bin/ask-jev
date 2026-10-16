@@ -48,11 +48,8 @@ if [ "$FORCE_BUILD" = "1" ]; then
     pid=$!
     status=0
     while true; do
-        if wait "$pid"; then
-            status=0
-            break
-        fi
-        status=$?
+        status=0
+        wait "$pid" || status=$?
         if ! kill -0 "$pid" 2>/dev/null; then
             break
         fi

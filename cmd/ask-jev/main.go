@@ -470,21 +470,27 @@ func recordOutcome(path, requestID, value string, stdout io.Writer) error {
 		return fmt.Errorf("open log: %w", err)
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 4<<20)
+	reader := bufio.NewReader(file)
 	found, alreadyRecorded := false, false
-	for scanner.Scan() {
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr == io.EOF && len(line) == 0 {
+			break
+		}
+		if readErr != nil && readErr != io.EOF {
+			return fmt.Errorf("read log: %w", readErr)
+		}
 		var entry logEntry
-		if json.Unmarshal(scanner.Bytes(), &entry) != nil {
+		if json.Unmarshal(line, &entry) != nil {
 			return errors.New("log contains an invalid JSONL entry")
 		}
 		if entry.RequestID == requestID {
 			found = found || entry.Event == "evaluation"
 			alreadyRecorded = alreadyRecorded || entry.Event == "outcome"
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read log: %w", err)
+		if readErr == io.EOF {
+			break
+		}
 	}
 	if !found {
 		return errors.New("request id was not found in the log")

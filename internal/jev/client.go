@@ -92,7 +92,26 @@ func (c Client) Evaluate(ctx context.Context, request Request) (Response, error)
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	resp, err := httpClient.Do(req)
+	redirectClient := *httpClient
+	redirectClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if next.URL.Scheme != "https" &&
+			!(next.URL.Scheme == "http" && isLoopback(next.URL.Hostname()) && via[0].URL.Scheme == "http") {
+			return errors.New("redirect target must use HTTPS")
+		}
+		if httpClient.CheckRedirect != nil {
+			if err := httpClient.CheckRedirect(next, via); err != nil {
+				return err
+			}
+		}
+		if next.URL.Host != via[0].URL.Host || next.URL.Scheme != via[0].URL.Scheme {
+			next.Header.Del("Authorization")
+		}
+		return nil
+	}
+	resp, err := redirectClient.Do(req)
 	if err != nil {
 		// net/http errors can include URLs and proxy details. Keep credentials and
 		// request state out of terminal output and JSONL logs.

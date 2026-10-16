@@ -75,6 +75,23 @@ func TestChoiceLogAndOutcome(t *testing.T) {
 	}
 }
 
+func TestOutcomeReadsLargeLoggedState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.jsonl")
+	requestID := "large-record"
+	state, err := json.Marshal(strings.Repeat("x", 5<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := appendLog(path, logEntry{Event: "evaluation", RequestID: requestID, State: state}); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	if err := recordOutcome(path, requestID, "true", &stdout); err != nil ||
+		!bytes.Contains(stdout.Bytes(), []byte(`"value":true`)) {
+		t.Fatalf("large outcome failed: %v", err)
+	}
+}
+
 func TestNoulAndScoreRequestShapes(t *testing.T) {
 	for _, tc := range []struct {
 		kind, answer string

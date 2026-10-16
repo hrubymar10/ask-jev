@@ -120,7 +120,8 @@ log. Later, `outcome` appends the actual
 value for that ID. A JSON value such as `true` or `42` stays typed; other text
 is stored as a string. `outcome` checks that the evaluation exists and refuses
 a second outcome for the same ID. Set `log_path` in config to avoid repeating
-`--log`.
+`--log`. Concurrent outcome writers are not serialized; record outcomes
+for a given log one process at a time.
 
 ```sh
 bin/ask-jev choice --state @state.json --question 'Route?' \
